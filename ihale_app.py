@@ -1,18 +1,13 @@
 import streamlit as st
+import json
+import os
 from datetime import datetime, timedelta
 import pandas as pd
 import matplotlib.pyplot as plt
-
-import firebase_admin
-from firebase_admin import credentials, firestore
-
-# Firebase Admin SDK'yı başlat
-if not firebase_admin._apps:
- import streamlit as st
 import firebase_admin
 from firebase_admin import credentials
 
-# Secrets içinden firebase configini oku
+# --- Firebase bağlantısı ---
 firebase_config = {
     "type": st.secrets["firebase"]["type"],
     "project_id": st.secrets["firebase"]["project_id"],
@@ -28,9 +23,6 @@ firebase_config = {
 cred = credentials.Certificate(firebase_config)
 firebase_admin.initialize_app(cred)
 
-    firebase_admin.initialize_app(cred)
-
-db = firestore.client()
 
 # ------------------- Firestore Veri Fonksiyonları -------------------
 
