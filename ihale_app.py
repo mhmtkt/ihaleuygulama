@@ -9,7 +9,10 @@ import os
 
 # ---------- Firebase Admin SDK Başlatma ----------
 
+db = None
+
 def initialize_firebase():
+    global db
     service_account_json = st.secrets["firebase"]["firebase_service_account"]
     cred_dict = json.loads(service_account_json)
     cred = credentials.Certificate(cred_dict)
@@ -17,7 +20,9 @@ def initialize_firebase():
     if not firebase_admin._apps:
         firebase_admin.initialize_app(cred)
 
-    return firestore.client()
+    db = firestore.client()
+    return db
+
 
 # ---------- Kullanıcı İşlemleri ----------
 
