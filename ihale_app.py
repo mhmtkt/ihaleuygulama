@@ -1,176 +1,106 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
-import matplotlib.pyplot as plt
-import json
-import os
 
-# Firebase başlat (secrets üzerinden)
-if not firebase_admin._apps:
-    firebase_info = {
-        "type": st.secrets["FIREBASE"]["type"],
-        "project_id": st.secrets["FIREBASE"]["project_id"],
-        "private_key_id": st.secrets["FIREBASE"]["private_key_id"],
-        "private_key": st.secrets["FIREBASE"]["private_key"].replace("\\n", "\n"),
-        "client_email": st.secrets["FIREBASE"]["client_email"],
-        "client_id": st.secrets["FIREBASE"]["client_id"],
-        "auth_uri": st.secrets["FIREBASE"]["auth_uri"],
-        "token_uri": st.secrets["FIREBASE"]["token_uri"],
-        "auth_provider_x509_cert_url": st.secrets["FIREBASE"]["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["FIREBASE"]["client_x509_cert_url"]
-    }
-    cred = credentials.Certificate(firebase_info)
+# Firebase bağlantısı
+if "firebase_initialized" not in st.session_state:
+    firebase_config = st.secrets["firebase"]
+    cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred)
+    st.session_state["firebase_initialized"] = True
 
 db = firestore.client()
 
-# ------------------- Yardımcı Fonksiyon -------------------
-def sayi_formatla(sayi):
-    if sayi >= 1_000_000:
-        return f"{sayi/1_000_000:.2f}M"
-    elif sayi >= 1000:
-        return f"{sayi/1000:.1f}K"
-    else:
-        return str(sayi)
-
-# ------------------- Giriş & Kayıt -------------------
+# Kullanıcı Girişi
 def login():
     st.subheader("Giriş Yap")
     username = st.text_input("Kullanıcı Adı")
     password = st.text_input("Şifre", type="password")
     if st.button("Giriş"):
-        doc_ref = db.collection("users").document(username)
-        doc = doc_ref.get()
-        if doc.exists and doc.to_dict()["password"] == password:
-            st.session_state["user"] = username
+        user_ref = db.collection("users").document(username)
+        user = user_ref.get()
+        if user.exists and user.to_dict().get("password") == password:
+            st.session_state["username"] = username
+            st.success("Giriş Başarılı!")
             st.experimental_rerun()
         else:
-            st.error("Hatalı giriş.")
+            st.error("Kullanıcı adı veya şifre hatalı.")
 
+# Kayıt Olma
 def register():
     st.subheader("Kayıt Ol")
     username = st.text_input("Yeni Kullanıcı Adı")
-    password = st.text_input("Şifre", type="password")
+    password = st.text_input("Yeni Şifre", type="password")
     if st.button("Kayıt Ol"):
-        doc_ref = db.collection("users").document(username)
-        if doc_ref.get().exists:
-            st.error("Bu kullanıcı zaten var.")
+        user_ref = db.collection("users").document(username)
+        if user_ref.get().exists:
+            st.error("Bu kullanıcı adı zaten alınmış.")
         else:
-            doc_ref.set({
+            user_ref.set({
                 "password": password,
-                "profile": {},
+                "created_at": datetime.now().isoformat(),
                 "ihaleler": [],
                 "giderler": []
             })
-            st.success("Kayıt başarılı!")
+            st.success("Kayıt başarılı, giriş yapabilirsiniz.")
             st.experimental_rerun()
 
-# ------------------- Profil Ayarı -------------------
-def profil():
-    st.subheader("Profil Bilgileri")
-    doc_ref = db.collection("users").document(st.session_state["user"])
-    data = doc_ref.get().to_dict()
-    profil = data.get("profile", {})
-
-    garage = st.number_input("Garaj Seviyesi", value=profil.get("garage", 1), step=1)
-    vehicles = st.number_input("Araç Sayısı", value=profil.get("vehicles", 0), step=1)
-    names = []
-    for i in range(vehicles):
-        names.append(st.text_input(f"Araç {i+1}", value=profil.get("names", [""]*vehicles)[i] if len(profil.get("names", [])) > i else ""))
-
-    if st.button("Kaydet"):
-        doc_ref.update({
-            "profile": {
-                "garage": garage,
-                "vehicles": vehicles,
-                "names": names
-            }
-        })
-        st.success("Profil güncellendi.")
-
-# ------------------- İhale Ekle -------------------
-def ihale():
-    st.subheader("İhale Girişi")
+# İhale Ekle
+def ihale_ekle():
+    st.subheader("Yeni İhale")
     tur = st.text_input("İhale Türü")
     bedel = st.number_input("İhale Bedeli ($)", min_value=0.0)
-    maliyet = st.number_input("Birim Maliyet ($)", min_value=0.0)
-    adet = st.number_input("Ürün Adedi", min_value=0)
-    if st.button("İhale Kaydet"):
-        yeni = {
+    urun_maliyet = st.number_input("Ürün Birim Maliyeti ($)", min_value=0.0)
+    adet = st.number_input("Ürün Sayısı", min_value=0)
+    if st.button("Kaydet"):
+        yeni_ihale = {
             "tur": tur,
             "bedel": bedel,
-            "maliyet": maliyet,
+            "urun_maliyet": urun_maliyet,
             "adet": adet,
             "tarih": datetime.now().isoformat()
         }
-        ref = db.collection("users").document(st.session_state["user"])
-        doc = ref.get().to_dict()
-        ihaleler = doc.get("ihaleler", [])
-        ihaleler.append(yeni)
-        ref.update({"ihaleler": ihaleler})
+        doc_ref = db.collection("users").document(st.session_state["username"])
+        doc = doc_ref.get().to_dict()
+        doc["ihaleler"].append(yeni_ihale)
+        doc_ref.set(doc)
         st.success("İhale kaydedildi.")
 
-# ------------------- Gider Ekle -------------------
-def gider():
-    st.subheader("Gider Ekle")
-    kategori = st.selectbox("Kategori", ["Araç Bakımı", "Maaş", "Dorse", "Diğer"])
-    tutar = st.number_input("Tutar ($)", min_value=0.0)
-    if st.button("Gider Kaydet"):
-        yeni = {
-            "kategori": kategori,
-            "tutar": tutar,
-            "tarih": datetime.now().isoformat()
-        }
-        ref = db.collection("users").document(st.session_state["user"])
-        doc = ref.get().to_dict()
-        giderler = doc.get("giderler", [])
-        giderler.append(yeni)
-        ref.update({"giderler": giderler})
-        st.success("Gider kaydedildi.")
-
-# ------------------- Rapor -------------------
+# Rapor Göster
 def rapor():
-    st.subheader("Günlük Rapor")
-    doc = db.collection("users").document(st.session_state["user"]).get().to_dict()
-    today = datetime.now().date()
+    st.subheader("İhale Raporu")
+    doc = db.collection("users").document(st.session_state["username"]).get().to_dict()
+    ihaleler = doc.get("ihaleler", [])
+    if not ihaleler:
+        st.warning("Henüz ihale kaydı yok.")
+        return
+    df = pd.DataFrame(ihaleler)
+    df["tarih"] = pd.to_datetime(df["tarih"])
+    df["toplam_maliyet"] = df["urun_maliyet"] * df["adet"]
+    df["kar"] = df["bedel"] - df["toplam_maliyet"]
+    st.dataframe(df[["tur", "bedel", "toplam_maliyet", "kar", "tarih"]])
+    st.line_chart(df.set_index("tarih")[["bedel", "toplam_maliyet", "kar"]])
 
-    ihaleler = [i for i in doc.get("ihaleler", []) if datetime.fromisoformat(i["tarih"]).date() == today]
-    giderler = [g for g in doc.get("giderler", []) if datetime.fromisoformat(g["tarih"]).date() == today]
-
-    gelir = sum(i["bedel"] for i in ihaleler)
-    maliyet = sum(i["maliyet"] * i["adet"] for i in ihaleler)
-    gider_toplam = sum(g["tutar"] for g in giderler)
-    kar = gelir - maliyet - gider_toplam
-
-    st.write(f"Toplam Gelir: {sayi_formatla(gelir)} $")
-    st.write(f"Toplam Maliyet: {sayi_formatla(maliyet)} $")
-    st.write(f"Gider: {sayi_formatla(gider_toplam)} $")
-    st.write(f"Kar: {sayi_formatla(kar)} $")
-
-# ------------------- Ana -------------------
+# Ana Ekran
 def main():
-    st.title("İhale Takip Sistemi (Firebase)")
-    if "user" not in st.session_state:
-        secim = st.radio("Seçim yapınız:", ["Giriş", "Kayıt Ol"])
-        if secim == "Giriş":
+    st.title("📦 İhale Takip Uygulaması")
+    if "username" not in st.session_state:
+        secim = st.radio("Lütfen seçin", ["Giriş Yap", "Kayıt Ol"])
+        if secim == "Giriş Yap":
             login()
         else:
             register()
     else:
-        st.sidebar.success(f"👋 Hoşgeldin {st.session_state['user']}")
-        sayfa = st.sidebar.radio("Sayfa Seç", ["Profil", "İhale", "Gider", "Rapor", "Çıkış"])
-        if sayfa == "Profil":
-            profil()
-        elif sayfa == "İhale":
-            ihale()
-        elif sayfa == "Gider":
-            gider()
+        st.sidebar.success(f"Hoş geldin {st.session_state['username']}")
+        sayfa = st.sidebar.selectbox("Sayfa Seç", ["İhale Girişi", "Rapor", "Çıkış"])
+        if sayfa == "İhale Girişi":
+            ihale_ekle()
         elif sayfa == "Rapor":
             rapor()
         elif sayfa == "Çıkış":
-            del st.session_state["user"]
+            del st.session_state["username"]
             st.experimental_rerun()
 
 if __name__ == "__main__":
