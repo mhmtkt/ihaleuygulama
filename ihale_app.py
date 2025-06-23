@@ -19,6 +19,9 @@ firebase_config = {
     "auth_provider_x509_cert_url": st.secrets["firebase"]["auth_provider_x509_cert_url"],
     "client_x509_cert_url": st.secrets["firebase"]["client_x509_cert_url"]
 }
+from firebase_admin import firestore
+
+db = firestore.client()
 
 cred = credentials.Certificate(firebase_config)
 firebase_admin.initialize_app(cred)
