@@ -1,11 +1,10 @@
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
 import firebase_admin
 from firebase_admin import credentials, firestore
 import json
-import os
 
 # ---------- Firebase Admin SDK Başlatma ----------
 
@@ -13,6 +12,7 @@ db = None
 
 def initialize_firebase():
     global db
+    # Streamlit secrets'ten JSON'u dict olarak alıyoruz
     service_account_json = st.secrets["firebase"]["firebase_service_account"]
     cred_dict = json.loads(service_account_json)
     cred = credentials.Certificate(cred_dict)
@@ -23,10 +23,13 @@ def initialize_firebase():
     db = firestore.client()
     return db
 
+# Firebase'i hemen başlat (program başında)
+initialize_firebase()
 
 # ---------- Kullanıcı İşlemleri ----------
 
 def kullanicilari_getir():
+    global db
     users_ref = db.collection("users")
     docs = users_ref.stream()
     users = {}
@@ -35,13 +38,16 @@ def kullanicilari_getir():
     return users
 
 def kullanici_kaydet(username, data):
+    global db
     db.collection("users").document(username).set(data)
 
 def kullanici_var_mi(username):
+    global db
     doc_ref = db.collection("users").document(username)
     return doc_ref.get().exists
 
 def kullanici_getir(username):
+    global db
     doc_ref = db.collection("users").document(username)
     doc = doc_ref.get()
     if doc.exists:
@@ -237,10 +243,8 @@ def operasyonel_giderler():
             **gider_detay
         })
 
-        # Garaj seviyesi yükseltme varsa güncelle
         if kategori == "Garaj Seviye Yükseltmesi":
             user["profile"]["garage_level"] = gider_detay["yeni_seviye"]
-        # Araç alımıysa araç listesine ekle ve araç sayısını artır
         if kategori == "Araç Alımı":
             user["profile"].setdefault("vehicle_names", []).append(gider_detay["arac_adi"])
             user["profile"]["vehicle_count"] = len(user["profile"]["vehicle_names"])
@@ -248,31 +252,6 @@ def operasyonel_giderler():
         kullanici_kaydet(username, user)
         st.success("Operasyonel gider kaydedildi.")
         st.experimental_rerun()
-
-def sayi_formatla(sayi):
-    if sayi >= 1_000_000:
-        milyon = sayi // 1_000_000
-        kalan = sayi % 1_000_000
-        if kalan == 0:
-            return f"{milyon} milyon"
-        else:
-            binler = kalan // 1000
-            yuzler = kalan % 1000
-            parcalar = []
-            if binler > 0:
-                parcalar.append(f"{binler} bin")
-            if yuzler > 0:
-                parcalar.append(f"{yuzler}")
-            return f"{milyon} milyon {' '.join(parcalar)}"
-    elif sayi >= 1000:
-        binler = sayi // 1000
-        yuzler = sayi % 1000
-        if yuzler == 0:
-            return f"{binler} bin"
-        else:
-            return f"{binler} bin {yuzler}"
-    else:
-        return str(sayi)
 
 def rapor_goruntule():
     st.subheader("Raporlar")
@@ -298,10 +277,7 @@ def rapor_goruntule():
         st.write("Operasyonel Giderler")
         st.dataframe(df_giderler)
 
-    # Grafikler
-
     if not df_ihaleler.empty and not df_giderler.empty:
-        # Toplam ihale geliri
         toplam_gelir = df_ihaleler["ihale_bedeli"].sum()
         toplam_gider = df_giderler["tutar"].sum()
         kar = toplam_gelir - toplam_gider
@@ -310,7 +286,6 @@ def rapor_goruntule():
         st.write(f"Toplam Gider: {toplam_gider:.2f} $")
         st.write(f"Toplam Kar: {kar:.2f} $")
 
-        # Grafik: Gelir vs Gider
         plt.figure(figsize=(8, 4))
         plt.bar(["Gelir", "Gider"], [toplam_gelir, toplam_gider], color=["green", "red"])
         plt.title("Gelir ve Gider Grafiği")
@@ -328,7 +303,6 @@ def main():
     st.title("İhale Takip Uygulaması")
 
     if "logged_in_user" not in st.session_state:
-        # Giriş veya kayıt seçenekleri
         secim = st.selectbox("Giriş veya Kayıt Ol", ["Giriş Yap", "Kayıt Ol"])
         if secim == "Giriş Yap":
             login()
