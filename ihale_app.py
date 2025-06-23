@@ -1,17 +1,17 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import datetime
-import pandas as pd
 
-# Firebase bağlantısı
-if "firebase_initialized" not in st.session_state:
-    firebase_config = st.secrets["firebase"]
-    cred = credentials.Certificate(firebase_config)
-    firebase_admin.initialize_app(cred)
-    st.session_state["firebase_initialized"] = True
+# Firebase credential bilgilerini secrets'ten alıyoruz
+firebase_config = st.secrets["firebase"]
+
+cred = credentials.Certificate(firebase_config)
+firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+# Artık db ile istediğin işlemi yapabilirsin
+
 
 # Kullanıcı Girişi
 def login():
