@@ -10,21 +10,14 @@ import os
 # ---------- Firebase Admin SDK Başlatma ----------
 
 def initialize_firebase():
-    # secrets.toml'dan alıyoruz
-    service_account_json = st.secrets["firebase_service_account"]
-
-    # dict haline çevir
+    service_account_json = st.secrets["firebase"]["firebase_service_account"]
     cred_dict = json.loads(service_account_json)
-
     cred = credentials.Certificate(cred_dict)
 
-    # Eğer zaten başlatılmışsa tekrar başlatma
     if not firebase_admin._apps:
         firebase_admin.initialize_app(cred)
 
     return firestore.client()
-
-db = initialize_firebase()
 
 # ---------- Kullanıcı İşlemleri ----------
 
