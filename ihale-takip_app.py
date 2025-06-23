@@ -254,8 +254,9 @@ def cikis_yap():
 def main():
     st.title("İhale Takip Uygulaması")
 
-    if "logged_in_user" not in st.session_state:
+   if "logged_in_user" not in st.session_state:
         secim = st.selectbox("Giriş veya Kayıt Ol", ["Giriş Yap", "Kayıt Ol"])
+        st.write(f"Seçimin: {secim}")  # Bu satırı test için ekledim, seçim görünsün diye
         if secim == "Giriş Yap":
             login()
         else:
