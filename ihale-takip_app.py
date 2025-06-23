@@ -1,44 +1,36 @@
 import streamlit as st
 from datetime import datetime
-import pandas as pd
-import matplotlib.pyplot as plt
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore
-import json
 
-# --- Firebase Bağlantısı ---
+# Firebase başlat
 def initialize_firebase():
+    service_account_json = st.secrets["firebase"]["firebase_service_account"]
+    cred_dict = json.loads(service_account_json)
+    cred = credentials.Certificate(cred_dict)
     if not firebase_admin._apps:
-        service_account_json = st.secrets["firebase"]["firebase_service_account"]
-        cred_dict = json.loads(service_account_json)
-        cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
     return firestore.client()
 
 db = initialize_firebase()
 
-# --- Kullanıcı Fonksiyonları ---
-def kullanici_getir(username):
-    doc_ref = db.collection("users").document(username)
-    doc = doc_ref.get()
-    if doc.exists:
-        return doc.to_dict()
-    else:
-        return None
+# Kullanıcı işlemleri
+def kullanici_var_mi(username):
+    return db.collection("users").document(username).get().exists
 
 def kullanici_kaydet(username, data):
     db.collection("users").document(username).set(data)
 
-def kullanici_var_mi(username):
-    doc_ref = db.collection("users").document(username)
-    return doc_ref.get().exists
+def kullanici_getir(username):
+    doc = db.collection("users").document(username).get()
+    return doc.to_dict() if doc.exists else None
 
-# --- Login ---
+# Giriş fonksiyonu
 def login():
     st.subheader("Giriş Yap")
     username = st.text_input("Kullanıcı Adı", key="login_user")
     password = st.text_input("Şifre", type="password", key="login_pass")
-
     if st.button("Giriş Yap"):
         user = kullanici_getir(username)
         if user and user.get("password") == password:
@@ -48,42 +40,36 @@ def login():
         else:
             st.error("Kullanıcı adı veya şifre yanlış.")
 
-# --- Register ---
+# Kayıt fonksiyonu
 def register():
     st.subheader("Kayıt Ol")
     username = st.text_input("Yeni Kullanıcı Adı", key="reg_user")
     password = st.text_input("Yeni Şifre", type="password", key="reg_pass")
-
     if st.button("Kayıt Ol"):
-        if username.strip() == "" or password.strip() == "":
+        if not username or not password:
             st.error("Kullanıcı adı ve şifre boş olamaz.")
             return
         if kullanici_var_mi(username):
             st.error("Bu kullanıcı adı zaten alınmış.")
             return
-        data = {
-            "password": password,
-            "profile": {},
-            "ihaleler": [],
-            "operasyonel_giderler": []
-        }
+        data = {"password": password, "ihaleler": [], "operasyonel_giderler": [], "profile": {}}
         kullanici_kaydet(username, data)
-        st.success("Kayıt başarılı! Lütfen giriş yapınız.")
+        st.success("Kayıt başarılı! Giriş yapabilirsiniz.")
         st.experimental_rerun()
 
-# --- Profil Bilgileri ---
+# Profil bilgisi güncelle
 def get_profile_info():
     st.subheader("Profil Bilgilerinizi Girin")
     username = st.session_state["logged_in_user"]
     user = kullanici_getir(username)
     profil = user.get("profile", {})
 
-    garage_level = st.number_input("Garaj Seviyeniz", min_value=1, max_value=100, step=1, value=profil.get("garage_level", 1))
-    vehicle_count = st.number_input("Araç Sayınız", min_value=0, max_value=100, step=1, value=profil.get("vehicle_count", 0))
-    trailer_count = st.number_input("Toplam Dorse Sayınız", min_value=0, max_value=100, step=1, value=profil.get("trailer_count", 0))
-
+    garage_level = st.number_input("Garaj Seviyeniz", min_value=1, max_value=100, value=profil.get("garage_level",1))
+    vehicle_count = st.number_input("Araç Sayınız", min_value=0, max_value=100, value=profil.get("vehicle_count",0))
+    trailer_count = st.number_input("Toplam Dorse Sayınız", min_value=0, max_value=100, value=profil.get("trailer_count",0))
     vehicle_names = profil.get("vehicle_names", [])
     yeni_vehicle_names = []
+
     for i in range(vehicle_count):
         default_name = vehicle_names[i] if i < len(vehicle_names) else ""
         name = st.text_input(f"{i+1}. Araç Adı", value=default_name, key=f"vehicle_{i}")
@@ -103,20 +89,22 @@ def get_profile_info():
         kullanici_kaydet(username, user)
         st.success("Profil bilgileri kaydedildi.")
 
-# --- İhale Girişi ---
+# İhale girişi
 def ihale_girisi():
     st.subheader("İhale Girişi")
+
     ihale_turu = st.text_input("İhale Türü (örneğin: Kimyasal)")
     ihale_bedeli = st.number_input("İhalenin Toplam Bedeli (Dolar)", min_value=0.0, step=0.01)
     urun_birim_maliyeti = st.number_input("Birim Ürün Maliyeti (Dolar)", min_value=0.0, step=0.01)
     urun_sayisi = st.number_input("Ürün Sayısı (Adet)", min_value=0)
 
     if st.button("İhale Kaydet"):
-        if ihale_turu.strip() == "":
+        if ihale_turu == "":
             st.error("İhale türü boş olamaz.")
             return
         username = st.session_state["logged_in_user"]
         user = kullanici_getir(username)
+
         yeni_ihale = {
             "ihale_turu": ihale_turu,
             "ihale_bedeli": ihale_bedeli,
@@ -128,7 +116,7 @@ def ihale_girisi():
         kullanici_kaydet(username, user)
         st.success("İhale kaydedildi.")
 
-# --- Operasyonel Giderler ---
+# Operasyonel giderler
 def operasyonel_giderler():
     st.subheader("Operasyonel Giderler")
     username = st.session_state["logged_in_user"]
@@ -207,13 +195,11 @@ def operasyonel_giderler():
         if "tutar" not in gider_detay:
             st.error("Lütfen tutar bilgisi girin.")
             return
-
         user.setdefault("operasyonel_giderler", []).append({
             "kategori": kategori,
             "tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             **gider_detay
         })
-
         # Garaj seviyesi yükseltme varsa güncelle
         if kategori == "Garaj Seviye Yükseltmesi":
             user["profile"]["garage_level"] = gider_detay["yeni_seviye"]
@@ -221,57 +207,62 @@ def operasyonel_giderler():
         if kategori == "Araç Alımı":
             user["profile"].setdefault("vehicle_names", []).append(gider_detay["arac_adi"])
             user["profile"]["vehicle_count"] = len(user["profile"]["vehicle_names"])
-
-        kullanici_kaydet(st.session_state["logged_in_user"], user)
+        kullanici_kaydet(username, user)
         st.success("Operasyonel gider kaydedildi.")
         st.experimental_rerun()
 
-# --- Raporlar ---
+# Rapor görüntüle
 def rapor_goruntule():
     st.subheader("Raporlar")
-    user = kullanici_getir(st.session_state["logged_in_user"])
+    username = st.session_state["logged_in_user"]
+    user = kullanici_getir(username)
 
     ihaleler = user.get("ihaleler", [])
     giderler = user.get("operasyonel_giderler", [])
 
-    df_ihaleler = pd.DataFrame(ihaleler)
-    df_giderler = pd.DataFrame(giderler)
+    st.write("İhaleler")
+    st.dataframe(ihaleler if ihaleler else [])
 
-    if df_ihaleler.empty:
-        st.info("Henüz ihale kaydınız yok.")
-    else:
-        st.write("İhaleler")
-        st.dataframe(df_ihaleler)
+    st.write("Operasyonel Giderler")
+    st.dataframe(giderler if giderler else [])
 
-    if df_giderler.empty:
-        st.info("Henüz operasyonel gider kaydınız yok.")
-    else:
-        st.write("Operasyonel Giderler")
-        st.dataframe(df_giderler)
+    toplam_gelir = sum(i.get("ihale_bedeli", 0) for i in ihaleler)
+    toplam_gider = sum(g.get("tutar", 0) for g in giderler)
+    kar = toplam_gelir - toplam_gider
 
-    if not df_ihaleler.empty and not df_giderler.empty:
-        toplam_gelir = df_ihaleler["ihale_bedeli"].sum()
-        toplam_gider = df_giderler["tutar"].sum()
-        kar = toplam_gelir - toplam_gider
+    st.write(f"Toplam İhale Geliri: {toplam_gelir:.2f} $")
+    st.write(f"Toplam Gider: {toplam_gider:.2f} $")
+    st.write(f"Toplam Kar: {kar:.2f} $")
 
-        st.write(f"Toplam İhale Geliri: {toplam_gelir:.2f} $")
-        st.write(f"Toplam Gider: {toplam_gider:.2f} $")
-        st.write(f"Toplam Kar: {kar:.2f} $")
-
-        plt.figure(figsize=(8,4))
-        plt.bar(["Gelir", "Gider"], [toplam_gelir, toplam_gider], color=["green", "red"])
-        plt.title("Gelir ve Gider Grafiği")
-        st.pyplot(plt)
-
-# --- Çıkış ---
+# Çıkış yap
 def cikis_yap():
     if "logged_in_user" in st.session_state:
         del st.session_state["logged_in_user"]
     st.success("Çıkış yapıldı.")
     st.experimental_rerun()
 
-# --- Ana Fonksiyon ---
+# Ana uygulama
 def main():
     st.title("İhale Takip Uygulaması")
+    if "logged_in_user" not in st.session_state:
+        secim = st.selectbox("Giriş veya Kayıt Ol", ["Giriş Yap", "Kayıt Ol"])
+        if secim == "Giriş Yap":
+            login()
+        else:
+            register()
+    else:
+        st.sidebar.write(f"Hoşgeldin, {st.session_state['logged_in_user']}")
+        menu = st.sidebar.radio("Menü", ["Profil", "İhale Girişi", "Operasyonel Giderler", "Raporlar", "Çıkış Yap"])
+        if menu == "Profil":
+            get_profile_info()
+        elif menu == "İhale Girişi":
+            ihale_girisi()
+        elif menu == "Operasyonel Giderler":
+            operasyonel_giderler()
+        elif menu == "Raporlar":
+            rapor_goruntule()
+        elif menu == "Çıkış Yap":
+            cikis_yap()
 
-   
+if __name__ == "__main__":
+    main()
